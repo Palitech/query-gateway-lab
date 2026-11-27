@@ -7,7 +7,11 @@ authors = [
     { name = "palitech", email = "aphletic@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.165.0",
+    "fastapi-cli>=0.0.34",
+    "uvicorn[standard]>=0.54.0",
+]
 
 [project.scripts]
 query-gateway = "query_gateway:main"
@@ -15,3 +19,18 @@ query-gateway = "query_gateway:main"
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.fastapi]
+entrypoint = "query_gateway.api:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.2",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+]

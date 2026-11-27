@@ -46,6 +46,7 @@ Ask before adding any other dependency.
 - **Always pass a dialect** to sqlglot (`postgres`, `databricks`).
 - **Deny by default.** Unknown statement types, parse errors, and unknown tables are rejected.
 - **Never log query results.** Log a hash of the query, not the full text.
+- **Check current docs, not memory.** Before choosing a library, version, command, or API, check current docs (Context7) or PyPI metadata, or read the installed package source. Say what you checked.
 - **Tests:** TJ writes the guard tests in `tests/test_guard.py`. Do not change or delete those tests without asking. Coverage must stay at 80% or higher.
 
 ## How to work with TJ
@@ -63,4 +64,6 @@ uv sync
 uv run pytest --cov=query_gateway --cov-fail-under=80
 uv run ruff check . && uv run ruff format --check .
 docker compose up -d postgres
+uv run fastapi dev --port 8002
+uv run python scripts/concurrency_demo.py
 ```
