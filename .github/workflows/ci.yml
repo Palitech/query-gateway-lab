@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: every job can only read the repo. No job overrides this.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned to a full commit SHA (tag in the comment). A tag can be
+# moved to point at other code; a SHA cannot. Dependabot keeps both updated.
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+      # --locked fails if uv.lock is out of date with pyproject.toml.
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      # Settings (strict, files = src) live in [tool.mypy] in pyproject.toml.
+      - run: uv run mypy
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: gateway
+          POSTGRES_USER: gateway
+          # Throwaway container with synthetic data, deleted when the job ends.
+          # Not a real secret; real ones come from the environment.
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        # The job waits until the health check passes before running steps.
+        options: >-
+          --health-cmd "pg_isready -U gateway -d gateway"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    # Standard libpq variables. psql and psycopg2 both read them.
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGDATABASE: gateway
+      PGUSER: gateway
+      PGPASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      # Service containers start before checkout, so they cannot mount
+      # docker/init.sql the way docker-compose does. Load it here instead.
+      - name: Load synthetic data
+        run: psql -v ON_ERROR_STOP=1 -f docker/init.sql
+      - run: uv run pytest --cov=query_gateway --cov-fail-under=80
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # From gitleaks_8.30.1_checksums.txt on the GitHub release.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history, so gitleaks scans every commit, not just the latest.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+
+      # pip-audit can't read uv.lock directly, so export it to a pinned,
+      # hashed requirements file first. --disable-pip audits exactly those
+      # pins instead of resolving again.
+      - name: pip-audit (known vulnerabilities in locked dependencies)
+        run: |
+          uv export --format requirements-txt --locked --all-groups --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
+          uv run pip-audit -r "$RUNNER_TEMP/requirements.txt" --disable-pip --strict
+
+      - name: bandit (common security mistakes in our code)
+        run: uv run bandit -r src
+
+      # Pinned release binary, checked against its published SHA-256.
+      - name: Install gitleaks
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: gitleaks (secrets in git history)
+        run: '"$RUNNER_TEMP/gitleaks" git --redact --verbose .'
