@@ -63,6 +63,9 @@ Ask before adding any other dependency.
 uv sync
 uv run pytest --cov=query_gateway --cov-fail-under=80
 uv run ruff check . && uv run ruff format --check .
+uv run mypy
+uv run pre-commit install          # once per clone
+uv run pre-commit run --all-files
 docker compose up -d postgres
 uv run fastapi dev --port 8002
 uv run python scripts/concurrency_demo.py
