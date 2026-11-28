@@ -64,6 +64,6 @@ Short notes: decision, why, alternatives.
 
 ## 11. Permission allowlist stays read-only
 
-- **Decision:** `.claude/settings.json` allows the project's check commands (`uv run pytest`, `uv run ruff`) and the read-only PowerShell cmdlets `Select-Object`, `Select-String` and `Get-Content`. The cmdlets came from counting tool calls across recent sessions. `ruff format` does rewrite files, but only to apply formatting, and the edit hook already does the same.
+- **Decision:** `.claude/settings.json` allows only the project's check commands (`uv run pytest`, `uv run ruff`). `ruff format` does rewrite files, but only to apply formatting, and the edit hook already does the same.
 - **Why:** an allow rule is a standing approval. Rules that write, push, or run arbitrary code (`uv run python *`, `gh api *`, `git push`) should keep prompting. Read-only `git`/`gh` commands already run without a prompt, so they need no rule.
-- **Note:** the `Read(./.env)` deny rule doesn't cover `Get-Content .env` in a shell. `protect.py` blocks that instead, because it checks every word of a shell command for secret paths.
+- **Rejected:** wildcard rules for `Select-Object`, `Select-String` and `Get-Content`, even though they were the most common PowerShell calls. `Select-Object` runs script blocks in calculated properties (`@{e={...}}`), which is arbitrary code. `Get-Content`/`Select-String` can read outside the repo (`~/.aws/credentials`), read `Env:` variables, and reach `.env` through a wildcard such as `.en?`, which `protect.py` doesn't catch. The Read and Grep tools do the same job and respect the deny list.
