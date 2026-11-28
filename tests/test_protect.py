@@ -44,6 +44,12 @@ protect = load_hook()
         "*.pem",
         "~/.ss?/id_rsa",
         "~/.a*/credentials",
+        # Bash negation `[^x]`, which fnmatch spells `[!x]`.
+        ".en[^x]",
+        # Bash brace expansion.
+        ".{env,x}",
+        "~/.{ssh,x}/config",
+        ".e{a..z}v",
     ],
 )
 def test_secret_paths_are_detected(path: str) -> None:
@@ -75,6 +81,9 @@ def test_ordinary_paths_are_allowed(path: str) -> None:
         "Get-Item Variable:\\PSVersionTable",
         "Get-ChildItem HKCU:\\Software",
         "Get-ChildItem Cert:\\CurrentUser\\My",
+        "Get-ChildItem -Path:Env:",
+        "Get-ChildItem Environment::",
+        "Get-Item Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER",
         "git push --force origin feature",
         "git reset --hard HEAD~1",
         "git commit --no-verify -m wip",
@@ -93,6 +102,8 @@ def test_blocked_commands(command: str) -> None:
         "uv run pytest --cov=query_gateway",
         "ruff check src/*.py",
         'Write-Output "$env:CLAUDE_PROJECT_DIR"',
+        "Write-Output ${env:CLAUDE_PROJECT_DIR}",
+        "Get-ChildItem src | ForEach-Object {$_.Name}",
         "Get-Content .env.example",
     ],
 )

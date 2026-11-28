@@ -57,9 +57,26 @@ SECRET_NAME_EXAMPLES = (
 )
 
 # PowerShell drives that expose environment variables, session variables,
-# functions, the registry, and certificates (e.g. `Get-ChildItem Env:`).
-# `$env:NAME` starts with `$`, so it is not matched.
-PROVIDER_PATH = re.compile(r"^(env|variable|function|hkcu|hklm|cert):", re.IGNORECASE)
+# functions, the registry, and certificates. Two spellings:
+#   drive:     `Env:`, also after a parameter colon or a slash (`-Path:Env:`)
+#   provider:  `Environment::`, `Microsoft.PowerShell.Core\Registry::HKCU`
+# `$env:NAME` and `${env:NAME}` have `$` or `{` before `env`, so they pass.
+PROVIDER_PATH = re.compile(
+    r"(?:^|[:\\/])(?:env|variable|function|hkcu|hklm|cert):"
+    r"|(?:environment|variable|function|registry|certificate|alias)::",
+    re.IGNORECASE,
+)
+
+# Bash brace expansion: `{a,b}` or `{a..z}`. Each group is replaced by `*`.
+# That can only widen what matches, so the check fails closed.
+BRACE_GROUP = re.compile(r"\{[^{}]*(?:,|\.\.)[^{}]*\}")
+
+
+def to_fnmatch(text: str) -> str:
+    """Rewrite bash glob syntax that fnmatch reads differently."""
+    text = BRACE_GROUP.sub("*", text)
+    # Bash accepts `[^x]` for "not x"; fnmatch only understands `[!x]`.
+    return text.replace("[^", "[!")
 
 
 def has_wildcard(text: str) -> bool:
@@ -85,7 +102,7 @@ def is_secret_name(name: str) -> bool:
 
 def is_secret_path(text: str) -> bool:
     """Return True if a path looks like a secret file, or a wildcard could reach one."""
-    path = PurePosixPath(text.replace("\\", "/"))
+    path = PurePosixPath(to_fnmatch(text).replace("\\", "/"))
     name = path.name.lower()
     parts = [p.lower() for p in path.parts]
 
@@ -123,7 +140,7 @@ def check_shell(command: str) -> None:
             continue
         if is_secret_path(token):
             block(f"The command touches a secret file ({token}).")
-        if PROVIDER_PATH.match(token):
+        if PROVIDER_PATH.search(token):
             block(f"PowerShell provider paths like {token} are blocked.")
 
     for pattern, message in GIT_RULES:
