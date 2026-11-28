@@ -8,6 +8,7 @@ This is a guardrail, not a security boundary. It catches mistakes.
 The permissions "deny" list in settings.json is a second layer.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -37,21 +38,62 @@ GIT_RULES = [
 ]
 
 
-def is_secret_path(text: str) -> bool:
-    """Return True if a path looks like a secret file."""
-    path = PurePosixPath(text.replace("\\", "/"))
-    name = path.name.lower()
-    parts = {p.lower() for p in path.parts}
+# Directories that hold credentials, usually under the home directory.
+SECRET_DIRS = (".ssh", ".aws", ".kube", ".docker")
 
-    if name == ".env":
+# One example of each kind of secret file name. A wildcard such as `.en?`
+# is blocked if it could expand to any of these.
+SECRET_NAME_EXAMPLES = (
+    ".env",
+    ".env.local",
+    ".git-credentials",
+    "server.pem",
+    "server.key",
+    "cert.pfx",
+    "cert.p12",
+    "id_rsa",
+    "id_ed25519",
+    "id_ecdsa",
+)
+
+# PowerShell drives that expose environment variables, session variables,
+# functions, the registry, and certificates (e.g. `Get-ChildItem Env:`).
+# `$env:NAME` starts with `$`, so it is not matched.
+PROVIDER_PATH = re.compile(r"^(env|variable|function|hkcu|hklm|cert):", re.IGNORECASE)
+
+
+def has_wildcard(text: str) -> bool:
+    return any(char in text for char in "*?[")
+
+
+def could_match(part: str, names: tuple[str, ...]) -> bool:
+    """True if `part` is one of `names`, or is a wildcard that matches one."""
+    if has_wildcard(part):
+        return any(fnmatch.fnmatchcase(name, part) for name in names)
+    return part in names
+
+
+def is_secret_name(name: str) -> bool:
+    if name in (".env", ".git-credentials"):
         return True
     if name.startswith(".env.") and not name.endswith(".example"):
         return True
     if name.endswith((".pem", ".key", ".pfx", ".p12")):
         return True
-    if name.startswith(("id_rsa", "id_ed25519", "id_ecdsa")):
+    return name.startswith(("id_rsa", "id_ed25519", "id_ecdsa"))
+
+
+def is_secret_path(text: str) -> bool:
+    """Return True if a path looks like a secret file, or a wildcard could reach one."""
+    path = PurePosixPath(text.replace("\\", "/"))
+    name = path.name.lower()
+    parts = [p.lower() for p in path.parts]
+
+    if is_secret_name(name):
         return True
-    return ".ssh" in parts
+    if has_wildcard(name) and could_match(name, SECRET_NAME_EXAMPLES):
+        return True
+    return any(could_match(part, SECRET_DIRS) for part in parts)
 
 
 def current_branch() -> str:
@@ -77,8 +119,12 @@ def block(message: str) -> None:
 def check_shell(command: str) -> None:
     # Split on whitespace and shell punctuation, then check each piece as a path.
     for token in re.split(r"[\s'\"=<>|;&()]+", command):
-        if token and is_secret_path(token):
+        if not token:
+            continue
+        if is_secret_path(token):
             block(f"The command touches a secret file ({token}).")
+        if PROVIDER_PATH.match(token):
+            block(f"PowerShell provider paths like {token} are blocked.")
 
     for pattern, message in GIT_RULES:
         if re.search(pattern, command):
