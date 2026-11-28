@@ -67,3 +67,13 @@ Short notes: decision, why, alternatives.
 - **Decision:** `.claude/settings.json` allows only the project's check commands (`uv run pytest`, `uv run ruff`). `ruff format` does rewrite files, but only to apply formatting, and the edit hook already does the same.
 - **Why:** an allow rule is a standing approval. Rules that write, push, or run arbitrary code (`uv run python *`, `gh api *`, `git push`) should keep prompting. Read-only `git`/`gh` commands already run without a prompt, so they need no rule.
 - **Rejected:** wildcard rules for `Select-Object`, `Select-String` and `Get-Content`, even though they were the most common PowerShell calls. `Select-Object` runs script blocks in calculated properties (`@{e={...}}`), which is arbitrary code. `Get-Content`/`Select-String` can read outside the repo (`~/.aws/credentials`), read `Env:` variables, and reach `.env` through a wildcard such as `.en?`, which `protect.py` doesn't catch. The Read and Grep tools do the same job and respect the deny list.
+
+## 12. `main` ruleset with no bypass
+
+- **Decision:** a repository ruleset on the default branch blocks deletion and force pushes, requires linear history, and requires a PR (squash only, review threads resolved) with `lint`, `typecheck`, `test` and `security` passing on an up-to-date branch. Nobody can bypass it, including the admin.
+- **Why 0 approvals:** GitHub doesn't let you approve your own PR, so on a solo repo any required approval would block every merge. The PR still has to exist and pass CI.
+- **Why the checks are pinned to GitHub Actions (`integration_id` 15368):** a status with the same name posted by another app or token can't satisfy the rule.
+- **Why strict (up to date):** a PR has to be tested against the current `main`, not the `main` it branched from. Sometimes it costs a click on "Update branch".
+- **Why no bypass:** with a bypass the rules become optional on a bad day. In an emergency, the ruleset itself can be edited, and that leaves a record.
+- **Alternatives:** classic branch protection (older and per-branch; rulesets layer and show in the API as `rules/branches/main`), or admin bypass (convenient, but it makes the rules optional).
+- **Also set:** secret scanning with push protection, and workflow runs from any outside contributor's PR need approval.
