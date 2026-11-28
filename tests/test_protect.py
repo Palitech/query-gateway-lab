@@ -50,6 +50,8 @@ protect = load_hook()
         ".{env,x}",
         "~/.{ssh,x}/config",
         ".e{a..z}v",
+        # Nested braces need more than one replacement pass.
+        ".{e{n,x}v,y}",
     ],
 )
 def test_secret_paths_are_detected(path: str) -> None:
@@ -84,6 +86,12 @@ def test_ordinary_paths_are_allowed(path: str) -> None:
         "Get-ChildItem -Path:Env:",
         "Get-ChildItem Environment::",
         "Get-Item Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER",
+        # PowerShell takes comma-separated path lists.
+        "Get-ChildItem .,Env:",
+        "Get-Content README.md,.env",
+        # Brace groups are replaced before the command is split on commas.
+        "cat .{env,x}",
+        "cat .{e{n,x}v,y}",
         "git push --force origin feature",
         "git reset --hard HEAD~1",
         "git commit --no-verify -m wip",
@@ -104,6 +112,8 @@ def test_blocked_commands(command: str) -> None:
         'Write-Output "$env:CLAUDE_PROJECT_DIR"',
         "Write-Output ${env:CLAUDE_PROJECT_DIR}",
         "Get-ChildItem src | ForEach-Object {$_.Name}",
+        # Bash doesn't expand braces that contain spaces, e.g. jq objects.
+        "gh pr view 3 --json title,state --jq '{title, state}'",
         "Get-Content .env.example",
     ],
 )
