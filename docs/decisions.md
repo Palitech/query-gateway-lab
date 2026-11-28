@@ -77,3 +77,12 @@ Short notes: decision, why, alternatives.
 - **Why no bypass:** with a bypass the rules become optional on a bad day. In an emergency, the ruleset itself can be edited, and that leaves a record.
 - **Alternatives:** classic branch protection (older and per-branch; rulesets layer and show in the API as `rules/branches/main`), or admin bypass (convenient, but it makes the rules optional).
 - **Also set:** secret scanning with push protection, and workflow runs from any outside contributor's PR need approval.
+
+## 13. `protect.py` blocks wildcards and PowerShell provider paths
+
+- **Decision:** a word with `*`, `?` or `[` is blocked if `fnmatch` says it could match an example secret name (`.env`, `id_rsa`, `server.pem`, …). Words starting with `Env:`, `Variable:`, `Function:`, `HKCU:`, `HKLM:` or `Cert:` are blocked. `.aws`, `.kube`, `.docker` and `.git-credentials` count as secret paths.
+- **Why:** the hook compared words literally, so `Get-Content .en?` read the env file, and `Get-ChildItem Env:` listed every environment variable. A security review of the PowerShell allow rules (decision 11) found both.
+- **Trade-off:** false positives. A bare `*` matches `.env`, so `cat *` and commit messages that contain `*` are blocked. The workaround is to write the message to a file and use `git commit -F <file>`, because the hook checks only the command text. A false positive costs a retry, while a gap could leak a secret.
+- **Not blocked:** `$env:NAME`. Scripts need it (`$env:CLAUDE_PROJECT_DIR`), and this project keeps secrets in files, not in shell variables.
+- **Rejected:** skipping the check inside here-strings and heredocs to stop the commit-message false positives. That would also let `@'...'@ | Invoke-Expression` through.
+- **Tests:** `tests/test_protect.py` loads the hook from its path. Coverage counts only `query_gateway`, so these tests don't change the 80% gate.
