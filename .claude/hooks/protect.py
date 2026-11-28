@@ -8,6 +8,7 @@ This is a guardrail, not a security boundary. It catches mistakes.
 The permissions "deny" list in settings.json is a second layer.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -37,21 +38,94 @@ GIT_RULES = [
 ]
 
 
-def is_secret_path(text: str) -> bool:
-    """Return True if a path looks like a secret file."""
-    path = PurePosixPath(text.replace("\\", "/"))
-    name = path.name.lower()
-    parts = {p.lower() for p in path.parts}
+# Directories that hold credentials, usually under the home directory.
+SECRET_DIRS = (".ssh", ".aws", ".kube", ".docker")
 
-    if name == ".env":
+# One example of each kind of secret file name. A wildcard such as `.en?`
+# is blocked if it could expand to any of these.
+SECRET_NAME_EXAMPLES = (
+    ".env",
+    ".env.local",
+    ".git-credentials",
+    "server.pem",
+    "server.key",
+    "cert.pfx",
+    "cert.p12",
+    "id_rsa",
+    "id_ed25519",
+    "id_ecdsa",
+)
+
+# PowerShell drives that expose environment variables, session variables,
+# functions, the registry, and certificates. Two spellings:
+#   drive:     `Env:`, anywhere in a word (`-Path:Env:`, `.,Env:`)
+#   provider:  `Environment::`, `Microsoft.PowerShell.Core\Registry::HKCU`
+# The lookbehind lets `$env:NAME` and `${env:NAME}` through, and words that
+# merely end in a drive name, such as `myenv:`.
+PROVIDER_PATH = re.compile(
+    r"(?<![$\w{])(?:env|variable|function|hkcu|hklm|cert):"
+    r"|(?:environment|variable|function|registry|certificate|alias)::",
+    re.IGNORECASE,
+)
+
+# Bash brace expansion: `{a,b}` or `{a..z}`, with no spaces inside (bash
+# doesn't expand `{a, b}`). Each group is replaced by `*`. That can only
+# widen what matches, so the check fails closed.
+BRACE_GROUP = re.compile(r"\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
+
+# Characters that separate words in a shell command. `,` separates
+# PowerShell path lists (`Get-Content a.txt,b.txt`).
+WORD_SEPARATORS = re.compile(r"[\s'\"=<>|;&(),]+")
+
+
+def replace_brace_groups(text: str) -> str:
+    """Replace brace groups with `*`, innermost first, until none are left."""
+    while True:
+        replaced = BRACE_GROUP.sub("*", text)
+        if replaced == text:
+            return text
+        text = replaced
+
+
+def to_fnmatch(text: str) -> str:
+    """Rewrite bash glob syntax that fnmatch reads differently."""
+    text = replace_brace_groups(text)
+    # Bash accepts `[^x]` for "not x"; fnmatch only understands `[!x]`.
+    return text.replace("[^", "[!")
+
+
+def has_wildcard(text: str) -> bool:
+    return any(char in text for char in "*?[")
+
+
+def could_match(part: str, names: tuple[str, ...]) -> bool:
+    """True if `part` is one of `names`, or is a wildcard that matches one."""
+    if has_wildcard(part):
+        return any(fnmatch.fnmatchcase(name, part) for name in names)
+    return part in names
+
+
+def is_secret_name(name: str) -> bool:
+    if name in (".env", ".git-credentials"):
         return True
     if name.startswith(".env.") and not name.endswith(".example"):
         return True
     if name.endswith((".pem", ".key", ".pfx", ".p12")):
         return True
-    if name.startswith(("id_rsa", "id_ed25519", "id_ecdsa")):
+    return name.startswith(("id_rsa", "id_ed25519", "id_ecdsa"))
+
+
+def is_secret_path(text: str) -> bool:
+    """Return True if a path looks like a secret file, or a wildcard could reach one."""
+    path = PurePosixPath(to_fnmatch(text).replace("\\", "/"))
+    name = path.name.lower()
+    parts = [p.lower() for p in path.parts]
+
+    if is_secret_name(name):
         return True
-    return ".ssh" in parts
+    if has_wildcard(name) and could_match(name, SECRET_NAME_EXAMPLES):
+        return True
+    return any(could_match(part, SECRET_DIRS) for part in parts)
 
 
 def current_branch() -> str:
@@ -76,9 +150,14 @@ def block(message: str) -> None:
 
 def check_shell(command: str) -> None:
     # Split on whitespace and shell punctuation, then check each piece as a path.
-    for token in re.split(r"[\s'\"=<>|;&()]+", command):
-        if token and is_secret_path(token):
+    # Replace brace groups first: splitting on `,` would break `{a,b}` apart.
+    for token in WORD_SEPARATORS.split(replace_brace_groups(command)):
+        if not token:
+            continue
+        if is_secret_path(token):
             block(f"The command touches a secret file ({token}).")
+        if PROVIDER_PATH.search(token):
+            block(f"PowerShell provider paths like {token} are blocked.")
 
     for pattern, message in GIT_RULES:
         if re.search(pattern, command):
