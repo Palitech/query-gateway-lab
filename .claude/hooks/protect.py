@@ -23,8 +23,14 @@ SHELL_TOOLS = {"Bash", "PowerShell"}
 
 # (pattern, message) pairs for shell commands.
 GIT_RULES = [
-    (r"\bgit\s+push\b.*(--force\b|--force-with-lease\b|\s-f\b)", "Force push is blocked."),
-    (r"\bgit\s+push\b.*\bmain\b", "Push to main is blocked. Push a feature branch and open a pull request."),
+    (
+        r"\bgit\s+push\b.*(--force\b|--force-with-lease\b|\s-f\b)",
+        "Force push is blocked.",
+    ),
+    (
+        r"\bgit\s+push\b.*\bmain\b",
+        "Push to main is blocked. Push a feature branch and open a pull request.",
+    ),
     (r"\bgit\s+reset\s+--hard\b", "git reset --hard is blocked. Ask TJ first."),
     (r"\bgit\s+clean\b.*\s-[a-zA-Z]*f", "git clean -f is blocked. Ask TJ first."),
     (r"--no-verify\b", "Skipping git hooks with --no-verify is blocked."),
@@ -52,6 +58,7 @@ def current_branch() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            check=False,  # Outside a repo, stdout is empty and we return "".
             capture_output=True,
             text=True,
             timeout=5,

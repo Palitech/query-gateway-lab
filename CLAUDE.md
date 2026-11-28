@@ -57,12 +57,23 @@ Ask before adding any other dependency.
 - When there are two reasonable approaches, name both and say which you recommend.
 - TJ keeps `AI_REVIEW_LOG.md`. Do not edit it.
 
+## Commits and pull requests
+
+- One logical change per commit.
+- Subject: imperative mood, 50 characters or fewer, no trailing period ("Add JWKS key lookup", not "Added ...").
+- Body (when the change isn't obvious): a blank line after the subject, then what changed and why, wrapped at 72 characters. Point to `docs/decisions.md` entries by number.
+- Commits Claude writes end with its `Co-Authored-By` line.
+- PR bodies follow `.github/pull_request_template.md`.
+
 ## Commands
 
 ```
 uv sync
 uv run pytest --cov=query_gateway --cov-fail-under=80
 uv run ruff check . && uv run ruff format --check .
+uv run mypy
+uv run pre-commit install          # once per clone
+uv run pre-commit run --all-files
 docker compose up -d postgres
 uv run fastapi dev --port 8002
 uv run python scripts/concurrency_demo.py

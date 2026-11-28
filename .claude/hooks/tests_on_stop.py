@@ -24,7 +24,17 @@ def main() -> None:
         sys.exit(0)
 
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-x", "--no-header", "-m", "not integration"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-x",
+            "--no-header",
+            "-m",
+            "not integration",
+        ],
+        check=False,  # A failing run is expected; returncode is checked below.
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -40,7 +50,8 @@ def main() -> None:
         sys.exit(0)
 
     print(
-        "Tests are failing. Fix them, or explain to TJ why they fail:\n" + result.stdout[-3000:],
+        "Tests are failing. Fix them, or explain to TJ why they fail:\n"
+        + result.stdout[-3000:],
         file=sys.stderr,
     )
     sys.exit(2)

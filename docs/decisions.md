@@ -30,3 +30,40 @@ Short notes: decision, why, alternatives.
 - **Decision:** `postgres:18` image. The password comes from `POSTGRES_PASSWORD` in a gitignored `.env`, and compose refuses to start without it.
 - **Why 18:** current stable major; 19.0 is brand new. From 18 on, the image's `PGDATA` is version-specific (`/var/lib/postgresql/18/docker`), so the volume mounts at `/var/lib/postgresql`.
 - **Data:** one `orders` table with 20 generated rows. Customer and product are codes, never names.
+
+## 6. mypy for type checking
+
+- **Decision:** mypy in `strict` mode on `src/`, configured in `[tool.mypy]` in `pyproject.toml`.
+- **Why:** pure Python, installs through `uv` like everything else, and is the reference checker most reviewers know. `strict` costs nothing to turn on while the code base is small.
+- **Alternative:** pyright. Faster and stricter by default, but its PyPI package is a wrapper that downloads Node.js.
+
+## 7. Actions pinned to commit SHAs
+
+- **Decision:** every `uses:` in `.github/workflows` points at a full commit SHA, with the tag in a comment.
+- **Why:** a tag is a movable label, so if an action's repo is compromised, `@v7` can be pointed at new code. A SHA can't change. Dependabot's `github-actions` updates bump the SHA and the comment together.
+- **Alternative:** tag pins (`@v7`). Easier to read, but you trust the action's maintainers on every run.
+
+## 8. gitleaks as a pinned binary in CI
+
+- **Decision:** CI downloads the gitleaks release tarball for a fixed version, checks its SHA-256 against the published checksums file, and runs `gitleaks git` over the full history (`fetch-depth: 0`). Locally, the pre-commit hook scans staged changes.
+- **Why:** no third-party action in the path, no licence question (`gitleaks-action` needs a key for organisation repos), and the checksum proves the binary is the published one.
+- **Alternative:** `gitleaks/gitleaks-action`. Less YAML, but adds a dependency with write-capable features we don't need.
+
+## 9. Security tools as dev dependencies
+
+- **Decision:** `pre-commit`, `mypy`, `bandit` and `pip-audit` live in the `dev` dependency group.
+- **Why:** versions are pinned in `uv.lock`, so local runs and CI use the same versions, and Dependabot updates them like any other package.
+- **Alternative:** run them ad hoc with `uvx`. Nothing to install, but versions float between runs.
+- **pip-audit detail:** `pip-audit --locked` reads only `pylock.toml` (PEP 751), not `uv.lock` (checked in the installed 2.10.1 source). CI exports the lock with `uv export --format requirements-txt`, which includes hashes, then audits it with `--disable-pip` so the exact pins are checked without resolving again.
+
+## 10. Commit and PR conventions without tooling
+
+- **Decision:** the commit rules live in CLAUDE.md (imperative subject of 50 characters or fewer, a body that says why), and PRs use a four-heading template in `.github/pull_request_template.md`.
+- **Why:** this is a solo repo, so a written convention is enough. A short template gets filled in, while a long checklist gets ticked without being read.
+- **Alternative:** Conventional Commits (`feat:`, `fix:`) enforced by commitlint. It pays off when changelogs or release versions are generated from commit messages, which we don't do, and it would add a Node dependency.
+
+## 11. Permission allowlist stays read-only
+
+- **Decision:** `.claude/settings.json` allows only the project's check commands (`uv run pytest`, `uv run ruff`). `ruff format` does rewrite files, but only to apply formatting, and the edit hook already does the same.
+- **Why:** an allow rule is a standing approval. Rules that write, push, or run arbitrary code (`uv run python *`, `gh api *`, `git push`) should keep prompting. Read-only `git`/`gh` commands already run without a prompt, so they need no rule.
+- **Rejected:** wildcard rules for `Select-Object`, `Select-String` and `Get-Content`, even though they were the most common PowerShell calls. `Select-Object` runs script blocks in calculated properties (`@{e={...}}`), which is arbitrary code. `Get-Content`/`Select-String` can read outside the repo (`~/.aws/credentials`), read `Env:` variables, and reach `.env` through a wildcard such as `.en?`, which `protect.py` doesn't catch. The Read and Grep tools do the same job and respect the deny list.

@@ -12,6 +12,7 @@ import sys
 def run_ruff(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "ruff", *args],
+        check=False,  # main() reads returncode itself.
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -33,7 +34,10 @@ def main() -> None:
         sys.exit(0)  # ruff is not installed yet; stay quiet during setup.
 
     if result.returncode != 0:
-        print(f"ruff found problems in {path}. Fix them:\n{result.stdout}", file=sys.stderr)
+        print(
+            f"ruff found problems in {path}. Fix them:\n{result.stdout}",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     sys.exit(0)
