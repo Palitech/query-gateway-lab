@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./.env)",
+      "Edit(./.env.*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run", "--no-sync", "--project", "${CLAUDE_PROJECT_DIR}",
+              "python", "${CLAUDE_PROJECT_DIR}/.claude/hooks/protect.py"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run", "--no-sync", "--project", "${CLAUDE_PROJECT_DIR}",
+              "python", "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint_on_edit.py"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run", "--no-sync", "--project", "${CLAUDE_PROJECT_DIR}",
+              "python", "${CLAUDE_PROJECT_DIR}/.claude/hooks/tests_on_stop.py"
+            ],
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
