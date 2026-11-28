@@ -4,7 +4,10 @@
       "Bash(uv run pytest *)",
       "Bash(uv run ruff *)",
       "PowerShell(uv run pytest *)",
-      "PowerShell(uv run ruff *)"
+      "PowerShell(uv run ruff *)",
+      "PowerShell(Select-Object *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Get-Content *)"
     ],
     "deny": [
       "Read(./.env)",

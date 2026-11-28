@@ -55,3 +55,15 @@ Short notes: decision, why, alternatives.
 - **Why:** versions are pinned in `uv.lock`, so local runs and CI use the same versions, and Dependabot updates them like any other package.
 - **Alternative:** run them ad hoc with `uvx`. Nothing to install, but versions float between runs.
 - **pip-audit detail:** `pip-audit --locked` reads only `pylock.toml` (PEP 751), not `uv.lock` (checked in the installed 2.10.1 source). CI exports the lock with `uv export --format requirements-txt`, which includes hashes, then audits it with `--disable-pip` so the exact pins are checked without resolving again.
+
+## 10. Commit and PR conventions without tooling
+
+- **Decision:** the commit rules live in CLAUDE.md (imperative subject of 50 characters or fewer, a body that says why), and PRs use a four-heading template in `.github/pull_request_template.md`.
+- **Why:** this is a solo repo, so a written convention is enough. A short template gets filled in, while a long checklist gets ticked without being read.
+- **Alternative:** Conventional Commits (`feat:`, `fix:`) enforced by commitlint. It pays off when changelogs or release versions are generated from commit messages, which we don't do, and it would add a Node dependency.
+
+## 11. Permission allowlist stays read-only
+
+- **Decision:** `.claude/settings.json` allows the project's check commands (`uv run pytest`, `uv run ruff`) and the read-only PowerShell cmdlets `Select-Object`, `Select-String` and `Get-Content`. The cmdlets came from counting tool calls across recent sessions. `ruff format` does rewrite files, but only to apply formatting, and the edit hook already does the same.
+- **Why:** an allow rule is a standing approval. Rules that write, push, or run arbitrary code (`uv run python *`, `gh api *`, `git push`) should keep prompting. Read-only `git`/`gh` commands already run without a prompt, so they need no rule.
+- **Note:** the `Read(./.env)` deny rule doesn't cover `Get-Content .env` in a shell. `protect.py` blocks that instead, because it checks every word of a shell command for secret paths.

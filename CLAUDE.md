@@ -57,6 +57,14 @@ Ask before adding any other dependency.
 - When there are two reasonable approaches, name both and say which you recommend.
 - TJ keeps `AI_REVIEW_LOG.md`. Do not edit it.
 
+## Commits and pull requests
+
+- One logical change per commit.
+- Subject: imperative mood, 50 characters or fewer, no trailing period ("Add JWKS key lookup", not "Added ...").
+- Body (when the change isn't obvious): a blank line after the subject, then what changed and why, wrapped at 72 characters. Point to `docs/decisions.md` entries by number.
+- Commits Claude writes end with its `Co-Authored-By` line.
+- PR bodies follow `.github/pull_request_template.md`.
+
 ## Commands
 
 ```
